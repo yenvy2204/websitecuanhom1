@@ -1,0 +1,759 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# =========================
+# CONFIG
+# =========================
+REPO_NAME="sapatrip"
+ORG=""                   # Để trống = repo dưới tài khoản của bạn. Ví dụ: ORG="your-org"
+DEFAULT_BRANCH="main"
+
+# =========================
+# CREATE REPO (GitHub)
+# =========================
+if [ -n "$ORG" ]; then
+  gh repo create "$ORG/$REPO_NAME" --public --clone
+  cd "$REPO_NAME"
+else
+  gh repo create "$REPO_NAME" --public --clone
+  cd "$REPO_NAME"
+fi
+
+# =========================
+# INIT NEXT.JS + TAILWIND
+# =========================
+# Tạo app Next.js (App Router) + TypeScript + Tailwind
+npx --yes create-next-app@latest . \
+  --typescript --eslint --tailwind --app --src-dir --import-alias "@/*" --use-npm \
+  --no-experimental-app
+
+# Dọn nội dung mặc định
+rm -rf src/app/page.tsx
+mkdir -p src/app/(pages)/rooms src/app/(pages)/rooms/[slug] src/app/(pages)/explore src/app/(pages)/about src/app/(pages)/contact src/app/(pages)/blog
+mkdir -p src/components src/lib public/images src/app/api
+mkdir -p public/posts
+
+# =========================
+# GLOBALS: fonts, theme, seo, layout, data
+# =========================
+cat > src/lib/site.ts <<'EOF'
+export const site = {
+  name: "SapaTrip",
+  description: "Đặt phòng Sapa, khám phá Sapa, homestay Sapa, resort Sapa, khách sạn Sapa.",
+  url: "https://example.com",
+  ogImage: "/images/hero.jpg",
+  keywords: [
+    "Sapa","du lịch Sapa","đặt phòng Sapa","homestay Sapa","resort Sapa","khách sạn Sapa","Cát Cát","Fansipan","Mường Hoa"
+  ]
+};
+EOF
+
+cat > src/app/layout.tsx <<'EOF'
+import type { Metadata } from "next";
+import "./globals.css";
+import { site } from "@/lib/site";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+
+export const metadata: Metadata = {
+  title: {
+    default: `${site.name} – Đặt phòng Sapa, khám phá Sapa`,
+    template: `%s · ${site.name}`,
+  },
+  description: site.description,
+  keywords: site.keywords,
+  openGraph: {
+    title: site.name,
+    description: site.description,
+    images: [site.ogImage],
+    url: site.url,
+    siteName: site.name,
+  },
+  metadataBase: new URL("https://example.com"),
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="vi">
+      <body className="min-h-screen bg-white text-slate-800">
+        <Header />
+        <main>{children}</main>
+        <Footer />
+      </body>
+    </html>
+  );
+}
+EOF
+
+# =========================
+# STYLES
+# =========================
+cat > src/app/globals.css <<'EOF'
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand: #0fb8b2; /* xanh ngọc */
+  --brand-600: #0aa29d;
+}
+
+.hl {
+  color: var(--brand);
+}
+.btn {
+  @apply inline-flex items-center justify-center rounded-2xl px-5 py-3 font-medium transition;
+  background: var(--brand);
+  color: white;
+}
+.btn:hover { background: var(--brand-600); }
+.btn-outline {
+  @apply inline-flex items-center justify-center rounded-2xl px-5 py-3 font-medium border;
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.section {
+  @apply max-w-6xl mx-auto px-4 sm:px-6 lg:px-8;
+}
+.card {
+  @apply rounded-2xl shadow-sm border border-slate-100 overflow-hidden bg-white;
+}
+.tag { @apply text-xs px-2 py-1 rounded-full bg-slate-100; }
+EOF
+
+# =========================
+# HEADER / FOOTER
+# =========================
+cat > src/components/Header.tsx <<'EOF'
+"use client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const links = [
+  { href: "/", label: "Trang chủ" },
+  { href: "/rooms", label: "Đặt phòng" },
+  { href: "/explore", label: "Khám phá" },
+  { href: "/blog", label: "Blog" },
+  { href: "/about", label: "Giới thiệu" },
+  { href: "/contact", label: "Liên hệ" },
+];
+
+export default function Header() {
+  const pathname = usePathname();
+  return (
+    <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b">
+      <div className="section flex items-center justify-between h-16">
+        <Link href="/" className="font-bold text-lg">
+          <span className="hl">Sapa</span>Trip
+        </Link>
+        <nav className="hidden md:flex gap-6">
+          {links.map(l => (
+            <Link key={l.href} href={l.href}
+              className={`text-sm hover:text-slate-900 ${pathname===l.href?"text-slate-900 font-semibold":"text-slate-600"}`}>
+              {l.label}
+            </Link>
+          ))}
+        </nav>
+        <Link href="/rooms" className="btn text-sm">Đặt phòng ngay</Link>
+      </div>
+    </header>
+  );
+}
+EOF
+
+cat > src/components/Footer.tsx <<'EOF'
+import Link from "next/link";
+
+export default function Footer() {
+  return (
+    <footer className="mt-16 border-t">
+      <div className="section py-10 grid md:grid-cols-4 gap-8">
+        <div>
+          <div className="font-bold text-lg"><span className="hl">Sapa</span>Trip</div>
+          <p className="text-sm mt-2">Du lịch Sapa – đặt phòng Sapa, homestay Sapa, resort Sapa, khách sạn Sapa.</p>
+        </div>
+        <div>
+          <div className="font-semibold mb-3">Liên kết nhanh</div>
+          <ul className="space-y-2 text-sm">
+            <li><Link href="/">Trang chủ</Link></li>
+            <li><Link href="/about">Giới thiệu</Link></li>
+            <li><Link href="/rooms">Đặt phòng</Link></li>
+            <li><Link href="/explore">Khám phá</Link></li>
+            <li><Link href="/blog">Blog</Link></li>
+            <li><Link href="/contact">Liên hệ</Link></li>
+          </ul>
+        </div>
+        <div>
+          <div className="font-semibold mb-3">Chính sách</div>
+          <ul className="space-y-2 text-sm">
+            <li><a href="#">Chính sách bảo mật</a></li>
+            <li><a href="#">Điều khoản sử dụng</a></li>
+          </ul>
+        </div>
+        <div>
+          <div className="font-semibold mb-3">Kết nối</div>
+          <div className="flex gap-3 text-sm">
+            <a href="#" aria-label="Facebook">Facebook</a>
+            <a href="#" aria-label="Instagram">Instagram</a>
+            <a href="#" aria-label="TikTok">TikTok</a>
+          </div>
+        </div>
+      </div>
+      <div className="text-center text-xs text-slate-500 pb-8">
+        © 2025 SapaTrip Việt Nam. All rights reserved.
+      </div>
+    </footer>
+  );
+}
+EOF
+
+# =========================
+# UTILS + MOCK DATA
+# =========================
+cat > src/lib/data.ts <<'EOF'
+export type Stay = {
+  slug: string;
+  name: string;
+  address: string;
+  images: string[];
+  price: number; // VND per night
+  rating: number;
+  type: "Khách sạn"|"Homestay"|"Resort";
+  amenities: string[];
+  policies: string[];
+  checkin: string;
+  checkout: string;
+  description: string;
+};
+
+export const stays: Stay[] = [
+  {
+    slug: "sapa-eden-view-homestay",
+    name: "Sapa Eden View Homestay",
+    address: "Bản Lao Chải, thung lũng Mường Hoa, Sapa",
+    images: ["/images/eden1.jpg","/images/eden2.jpg","/images/eden3.jpg"],
+    price: 650000, rating: 4.7, type: "Homestay",
+    amenities: ["WiFi","View núi","Bữa sáng","Xe đưa đón"],
+    policies: ["Miễn phí hủy 48h","Không hút thuốc trong phòng"],
+    checkin: "14:00", checkout: "12:00",
+    description: "Homestay ấm cúng, view thung lũng Mường Hoa, phù hợp cặp đôi và nhóm bạn."
+  },
+  {
+    slug: "topas-ecolodge-resort",
+    name: "Topas Ecolodge Resort",
+    address: "Thanh Kim, Sapa",
+    images: ["/images/topas1.jpg","/images/topas2.jpg","/images/topas3.jpg"],
+    price: 4200000, rating: 4.8, type: "Resort",
+    amenities: ["WiFi","View núi","Bể bơi","Bữa sáng"],
+    policies: ["Miễn phí hủy 72h"],
+    checkin: "14:00", checkout: "12:00",
+    description: "Resort sang trọng giữa núi rừng, không gian riêng tư, dịch vụ cao cấp."
+  },
+  {
+    slug: "chapa-valley-house",
+    name: "Chapa Valley House",
+    address: "Tả Van, Sapa",
+    images: ["/images/chapa1.jpg","/images/chapa2.jpg","/images/chapa3.jpg"],
+    price: 850000, rating: 4.6, type: "Homestay",
+    amenities: ["WiFi","View núi","Ăn sáng","Xe đưa đón"],
+    policies: ["Miễn phí hủy 24h"],
+    checkin: "14:00", checkout: "12:00",
+    description: "Nhà gỗ xinh xắn gần trung tâm, ấm cúng và thân thiện."
+  },
+  {
+    slug: "eden-boutique-hotel-spa",
+    name: "Eden Boutique Hotel & Spa",
+    address: "035 Fansipan, Trung tâm thị trấn Sapa",
+    images: ["/images/hotel1.jpg","/images/hotel2.jpg","/images/hotel3.jpg"],
+    price: 1200000, rating: 4.5, type: "Khách sạn",
+    amenities: ["WiFi","Spa","Bữa sáng","Đưa đón"],
+    policies: ["Miễn phí hủy 48h"],
+    checkin: "14:00", checkout: "12:00",
+    description: "Khách sạn trung tâm, tiện nghi, dễ dàng di chuyển đến các điểm tham quan."
+  }
+];
+
+export const highlights = [
+  { title: "Núi Fansipan", desc: "Nóc nhà Đông Dương – chạm tay vào mây.", img: "/images/fansipan.jpg" },
+  { title: "Bản Cát Cát", desc: "Làng cổ H’Mông duyên dáng.", img: "/images/catcat.jpg" },
+  { title: "Nhà thờ đá Sapa", desc: "Biểu tượng cổ kính giữa thị trấn.", img: "/images/church.jpg" },
+  { title: "Thung lũng Mường Hoa", desc: "Ruộng bậc thang bát ngát.", img: "/images/muonghoa.jpg" },
+  { title: "Cầu Kính Rồng Mây", desc: "Trải nghiệm đi trên mây ấn tượng.", img: "/images/rongmay.jpg" },
+];
+EOF
+
+# =========================
+# HOME PAGE
+# =========================
+cat > src/app/page.tsx <<'EOF'
+import Link from "next/link";
+import Image from "next/image";
+import { highlights, stays } from "@/lib/data";
+
+export default function Home() {
+  return (
+    <>
+      <section className="relative">
+        <div className="section py-14 grid lg:grid-cols-2 gap-10 items-center">
+          <div>
+            <h1 className="text-4xl md:text-5xl font-bold leading-tight">
+              Khám phá Sapa – <span className="hl">Nơi mây chạm đỉnh</span>, nghỉ dưỡng chạm tim
+            </h1>
+            <p className="mt-4 text-slate-600">
+              SapaTrip giúp bạn khám phá vẻ đẹp Sapa và đặt phòng dễ dàng:
+              xem phòng, chọn ngày, đặt chỗ – tất cả chỉ trong vài bước.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <Link href="/rooms" className="btn">Đặt phòng ngay</Link>
+              <a href="#destinations" className="btn-outline">Xem địa điểm nổi bật</a>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Image src="/images/hero.jpg" alt="Sapa terraces" width={600} height={400} className="rounded-2xl object-cover h-48 w-full"/>
+            <Image src="/images/fansipan.jpg" alt="Fansipan" width={600} height={400} className="rounded-2xl object-cover h-48 w-full"/>
+            <Image src="/images/catcat.jpg" alt="Cát Cát" width={600} height={400} className="rounded-2xl object-cover h-48 w-full"/>
+            <Image src="/images/muonghoa.jpg" alt="Mường Hoa" width={600} height={400} className="rounded-2xl object-cover h-48 w-full"/>
+          </div>
+        </div>
+      </section>
+
+      <section id="destinations" className="section py-12">
+        <h2 className="text-2xl font-bold mb-6">Điểm đến nổi bật</h2>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {highlights.map((h) => (
+            <div key={h.title} className="card">
+              <Image src={h.img} alt={h.title} width={800} height={600} className="h-48 w-full object-cover"/>
+              <div className="p-4">
+                <div className="font-semibold">{h.title}</div>
+                <p className="text-sm text-slate-600">{h.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="section py-12">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold">Chỗ ở được yêu thích</h2>
+          <Link href="/rooms" className="text-sm hl">Xem tất cả →</Link>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {stays.map((s) => (
+            <div key={s.slug} className="card">
+              <Image src={s.images[0]} alt={s.name} width={800} height={600} className="h-48 w-full object-cover"/>
+              <div className="p-4 space-y-2">
+                <div className="font-semibold">{s.name}</div>
+                <div className="text-sm text-slate-600">{s.address}</div>
+                <div className="text-sm"><span className="tag">{s.type}</span> <span className="ml-2">⭐ {s.rating}</span></div>
+                <div className="font-semibold">{s.price.toLocaleString("vi-VN")}đ/đêm</div>
+                <div className="flex gap-3 pt-2">
+                  <Link href={`/rooms/${s.slug}`} className="btn text-sm">Xem phòng</Link>
+                  <Link href={`/rooms/${s.slug}`} className="btn-outline text-sm">Đặt ngay</Link>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="section py-12">
+        <h2 className="text-2xl font-bold">Ưu đãi đặc biệt</h2>
+        <ul className="list-disc ml-6 mt-4 text-slate-700 space-y-2">
+          <li>Giảm 20% cho khách đặt trước 7 ngày</li>
+          <li>Combo 2N1Đ + tour xe lửa Mường Hoa chỉ từ 1.200.000đ</li>
+          <li>Ưu đãi cáp treo Fansipan dành cho thành viên</li>
+        </ul>
+      </section>
+
+      <section className="section py-12">
+        <h2 className="text-2xl font-bold">Khách nói gì về SapaTrip</h2>
+        <div className="grid md:grid-cols-2 gap-6 mt-4">
+          <blockquote className="card p-6">“Đặt phòng nhanh, giá tốt, hình ảnh chân thực!” — <b>Linh Nguyễn</b></blockquote>
+          <blockquote className="card p-6">“View cực chill, hỗ trợ 24/7 rất chuyên nghiệp.” — <b>Minh Phạm</b></blockquote>
+        </div>
+      </section>
+    </>
+  );
+}
+EOF
+
+# =========================
+# ROOMS LIST + SEARCH/FILTER
+# =========================
+cat > src/app/(pages)/rooms/page.tsx <<'EOF'
+"use client";
+import { stays } from "@/lib/data";
+import Link from "next/link";
+import Image from "next/image";
+import { useMemo, useState } from "react";
+
+export default function RoomsPage() {
+  const [q, setQ] = useState("");
+  const [type, setType] = useState<string>("Tất cả");
+  const [maxPrice, setMaxPrice] = useState<number>(0);
+  const [minRating, setMinRating] = useState<number>(0);
+
+  const list = useMemo(() => {
+    return stays.filter(s =>
+      (type==="Tất cả" || s.type===type) &&
+      (maxPrice===0 || s.price<=maxPrice) &&
+      (minRating===0 || s.rating>=minRating) &&
+      (q==="" || s.name.toLowerCase().includes(q.toLowerCase()) || s.address.toLowerCase().includes(q.toLowerCase()))
+    );
+  }, [q,type,maxPrice,minRating]);
+
+  return (
+    <div className="section py-10">
+      <h1 className="text-3xl font-bold">Tìm & đặt phòng tại Sapa</h1>
+      <p className="text-slate-600 mt-2">Chọn nơi nghỉ lý tưởng giữa lòng Sapa – từ homestay ấm cúng đến resort sang trọng.</p>
+
+      <div className="card p-4 mt-6 grid md:grid-cols-4 gap-4">
+        <input placeholder="Tìm theo tên/địa chỉ…" className="border rounded-xl px-3 py-2"
+          value={q} onChange={e=>setQ(e.target.value)} />
+        <select className="border rounded-xl px-3 py-2" value={type} onChange={e=>setType(e.target.value)}>
+          <option>Tất cả</option>
+          <option>Khách sạn</option>
+          <option>Homestay</option>
+          <option>Resort</option>
+        </select>
+        <select className="border rounded-xl px-3 py-2" value={maxPrice} onChange={e=>setMaxPrice(Number(e.target.value))}>
+          <option value="0">Giá: bất kỳ</option>
+          <option value="800000">≤ 800.000đ</option>
+          <option value="1500000">≤ 1.500.000đ</option>
+          <option value="3000000">≤ 3.000.000đ</option>
+          <option value="5000000">≤ 5.000.000đ</option>
+        </select>
+        <select className="border rounded-xl px-3 py-2" value={minRating} onChange={e=>setMinRating(Number(e.target.value))}>
+          <option value="0">Đánh giá: bất kỳ</option>
+          <option value="4">≥ 4.0</option>
+          <option value="4.5">≥ 4.5</option>
+        </select>
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+        {list.map(s=>(
+          <div key={s.slug} className="card">
+            <Image src={s.images[0]} alt={s.name} width={800} height={600} className="h-48 w-full object-cover"/>
+            <div className="p-4 space-y-2">
+              <div className="font-semibold">{s.name}</div>
+              <div className="text-sm text-slate-600">{s.address}</div>
+              <div className="text-sm"><span className="tag">{s.type}</span> <span className="ml-2">⭐ {s.rating}</span></div>
+              <div className="font-semibold">{s.price.toLocaleString("vi-VN")}đ/đêm</div>
+              <div className="flex gap-3 pt-2">
+                <Link href={`/rooms/${s.slug}`} className="btn text-sm">Xem chi tiết</Link>
+                <Link href={`/rooms/${s.slug}`} className="btn-outline text-sm">Đặt ngay</Link>
+              </div>
+            </div>
+          </div>
+        ))}
+        {list.length===0 && <div className="text-slate-500">Không tìm thấy kết quả phù hợp.</div>}
+      </div>
+    </div>
+  );
+}
+EOF
+
+# =========================
+# ROOM DETAIL
+# =========================
+cat > src/app/(pages)/rooms/[slug]/page.tsx <<'EOF'
+import { stays } from "@/lib/data";
+import Image from "next/image";
+import Link from "next/link";
+
+export default function RoomDetail({ params }: { params: { slug: string } }) {
+  const stay = stays.find(s => s.slug === params.slug);
+  if(!stay) return <div className="section py-10">Không tìm thấy phòng.</div>;
+
+  return (
+    <div className="section py-10">
+      <nav className="text-sm text-slate-500"><Link href="/rooms">← Quay lại danh sách</Link></nav>
+      <h1 className="text-3xl font-bold mt-2">{stay.name}</h1>
+      <div className="text-slate-600">{stay.address}</div>
+
+      <div className="grid md:grid-cols-3 gap-3 mt-4">
+        {stay.images.map((src, i)=>(
+          <Image key={i} src={src} alt={stay.name} width={1200} height={800} className="rounded-xl h-56 w-full object-cover"/>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-8 mt-8">
+        <div className="lg:col-span-2">
+          <h2 className="text-xl font-semibold mb-2">Mô tả</h2>
+          <p className="text-slate-700">{stay.description}</p>
+
+          <h2 className="text-xl font-semibold mt-6 mb-2">Tiện nghi</h2>
+          <ul className="list-disc ml-6 text-slate-700">
+            {stay.amenities.map(a => <li key={a}>{a}</li>)}
+          </ul>
+
+          <h2 className="text-xl font-semibold mt-6 mb-2">Chính sách</h2>
+          <ul className="list-disc ml-6 text-slate-700">
+            {stay.policies.map(p => <li key={p}>{p}</li>)}
+          </ul>
+
+          <h2 className="text-xl font-semibold mt-6 mb-2">Giờ nhận/trả phòng</h2>
+          <p>Check-in: {stay.checkin} · Check-out: {stay.checkout}</p>
+
+          <h2 className="text-xl font-semibold mt-6 mb-2">Phòng tương tự</h2>
+          <div className="flex flex-wrap gap-3">
+            {stays.filter(s=>s.slug!==stay.slug).slice(0,3).map(s=>(
+              <Link key={s.slug} href={`/rooms/${s.slug}`} className="btn-outline text-sm">{s.name}</Link>
+            ))}
+          </div>
+        </div>
+
+        <aside className="card p-5 h-fit">
+          <div className="text-2xl font-bold">{stay.price.toLocaleString("vi-VN")}đ <span className="text-sm font-normal">/ đêm</span></div>
+          <div className="text-sm text-slate-600 mt-1">⭐ {stay.rating} · {stay.type}</div>
+          <div className="flex gap-3 mt-4">
+            <a href="#" className="btn w-full">Đặt ngay</a>
+            <a href="#" className="btn-outline w-full text-center">Check availability</a>
+          </div>
+        </aside>
+      </div>
+
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold mb-2">Review khách hàng</h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          <blockquote className="card p-4">“Phòng sạch, view thung lũng cực chill. Rất đáng tiền!” — <b>Trang Lê</b></blockquote>
+          <blockquote className="card p-4">“Nhân viên thân thiện, hỗ trợ chu đáo.” — <b>Nam Trần</b></blockquote>
+        </div>
+      </section>
+    </div>
+  );
+}
+EOF
+
+# =========================
+# EXPLORE PAGE
+# =========================
+cat > src/app/(pages)/explore/page.tsx <<'EOF'
+import Image from "next/image";
+import Link from "next/link";
+import { highlights } from "@/lib/data";
+
+export default function ExplorePage(){
+  return (
+    <div className="section py-10">
+      <h1 className="text-3xl font-bold">Khám phá Sapa</h1>
+      <p className="text-slate-600 mt-2">
+        Sapa – viên ngọc Tây Bắc ở độ cao 1.500m, khí hậu mát mẻ, thiên nhiên hùng vĩ, văn hoá H’Mông, Dao đỏ, Tày đặc sắc.
+      </p>
+
+      <h2 className="text-2xl font-semibold mt-8 mb-4">Top điểm đến phải ghé</h2>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {highlights.map(h=>(
+          <div key={h.title} className="card">
+            <Image src={h.img} alt={h.title} width={800} height={600} className="h-48 w-full object-cover"/>
+            <div className="p-4">
+              <div className="font-semibold">{h.title}</div>
+              <p className="text-sm text-slate-600">{h.desc}</p>
+              <Link href="/rooms" className="btn text-sm mt-3 inline-block">Xem phòng gần đây</Link>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <h2 className="text-2xl font-semibold mt-10 mb-3">Trải nghiệm địa phương</h2>
+      <ul className="list-disc ml-6 text-slate-700 space-y-1">
+        <li>Trekking Lao Chải – Tả Van</li>
+        <li>Tắm lá Dao đỏ</li>
+        <li>Chợ đêm Sapa</li>
+        <li>Ẩm thực Sapa: cá hồi, thắng cố, lợn bản nướng</li>
+      </ul>
+    </div>
+  );
+}
+EOF
+
+# =========================
+# ABOUT / CONTACT
+# =========================
+cat > src/app/(pages)/about/page.tsx <<'EOF'
+export default function AboutPage(){
+  return (
+    <div className="section py-10">
+      <h1 className="text-3xl font-bold">Về SapaTrip</h1>
+      <p className="mt-4 text-slate-700">
+        “SapaTrip ra đời với mong muốn giúp du khách trải nghiệm trọn vẹn Sapa – từ tìm hiểu điểm đến đến đặt phòng nhanh chóng, tiện lợi.”
+      </p>
+      <h2 className="text-xl font-semibold mt-6">Sứ mệnh & cam kết</h2>
+      <ul className="list-disc ml-6 text-slate-700 space-y-1">
+        <li>Minh bạch giá – không phí ẩn</li>
+        <li>Hình ảnh & đánh giá thực tế</li>
+        <li>Hỗ trợ 24/7 từ đội ngũ địa phương</li>
+      </ul>
+    </div>
+  );
+}
+EOF
+
+cat > src/app/(pages)/contact/page.tsx <<'EOF'
+export default function ContactPage(){
+  return (
+    <div className="section py-10">
+      <h1 className="text-3xl font-bold">Liên hệ</h1>
+      <form className="card p-6 mt-6 max-w-xl space-y-3">
+        <input className="border rounded-xl px-3 py-2 w-full" placeholder="Họ tên" />
+        <input className="border rounded-xl px-3 py-2 w-full" type="email" placeholder="Email" />
+        <textarea className="border rounded-xl px-3 py-2 w-full" rows={5} placeholder="Nội dung"></textarea>
+        <button className="btn w-full" type="button">Gửi</button>
+      </form>
+
+      <div className="mt-8 space-y-1 text-slate-700">
+        <div>📞 Hotline: 0989 888 999</div>
+        <div>📧 Email: support@sapatrip.vn</div>
+        <div>📍 Địa chỉ: Trung tâm thị trấn Sapa, Lào Cai</div>
+      </div>
+
+      <div className="mt-6">
+        <iframe
+          title="Sapa Center Map"
+          width="100%" height="360" loading="lazy" className="rounded-2xl border"
+          referrerPolicy="no-referrer-when-downgrade"
+          src="https://www.google.com/maps?q=sapa%20center&output=embed">
+        </iframe>
+      </div>
+    </div>
+  );
+}
+EOF
+
+# =========================
+# BLOG (LIST + POSTS)
+# =========================
+cat > src/app/(pages)/blog/page.tsx <<'EOF'
+import Link from "next/link";
+
+const posts = [
+  { slug:"kinh-nghiem-3n2d-sapa-cho-nguoi-moi", title:"Kinh nghiệm du lịch Sapa tự túc 3 ngày 2 đêm cho người mới" },
+  { slug:"top-5-homestay-view-nui-dep-nhat", title:"Top 5 homestay có view núi đẹp nhất ở Sapa" },
+  { slug:"mua-nao-dep-nhat-di-sapa", title:"Mùa nào đẹp nhất để đi Sapa?" },
+];
+
+export default function BlogPage(){
+  return (
+    <div className="section py-10">
+      <h1 className="text-3xl font-bold">Blog / Tin tức du lịch</h1>
+      <ul className="mt-6 space-y-3">
+        {posts.map(p=>(
+          <li key={p.slug} className="card p-4 flex items-center justify-between">
+            <div className="font-semibold">{p.title}</div>
+            <Link href={`/blog/${p.slug}`} className="btn-outline text-sm">Đọc bài →</Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+EOF
+
+mkdir -p src/app/(pages)/blog/kinh-nghiem-3n2d-sapa-cho-nguoi-moi
+cat > src/app/(pages)/blog/kinh-nghiem-3n2d-sapa-cho-nguoi-moi/page.tsx <<'EOF'
+export default function Post(){
+  return (
+    <article className="section py-10 prose max-w-3xl">
+      <h1>Kinh nghiệm du lịch Sapa tự túc 3 ngày 2 đêm cho người mới</h1>
+      <p>Gợi ý lịch trình, điểm tham quan, món ăn và mẹo đặt phòng tiết kiệm trên SapaTrip.</p>
+      <h2>Lịch trình gợi ý</h2>
+      <ul>
+        <li>Ngày 1: Nhà thờ đá – Bản Cát Cát – Chợ đêm</li>
+        <li>Ngày 2: Cáp treo Fansipan – Thung lũng Mường Hoa</li>
+        <li>Ngày 3: Ô Quy Hồ – mua quà lưu niệm</li>
+      </ul>
+      <p><b>Tip:</b> Đặt phòng sớm 7–14 ngày để có giá tốt, ưu tiên homestay có view núi.</p>
+    </article>
+  );
+}
+EOF
+
+mkdir -p src/app/(pages)/blog/top-5-homestay-view-nui-dep-nhat
+cat > src/app/(pages)/blog/top-5-homestay-view-nui-dep-nhat/page.tsx <<'EOF'
+export default function Post(){
+  return (
+    <article className="section py-10 prose max-w-3xl">
+      <h1>Top 5 homestay có view núi đẹp nhất ở Sapa</h1>
+      <p>Từ căn nhà gỗ giữa mây đến homestay bên thung lũng – đây là 5 lựa chọn ấn tượng.</p>
+      <ol>
+        <li>Sapa Eden View Homestay</li>
+        <li>Chapa Valley House</li>
+        <li>Topas Riverside Lodge</li>
+        <li>Utopia in Sapa</li>
+        <li>Eco Palms House</li>
+      </ol>
+    </article>
+  );
+}
+EOF
+
+mkdir -p src/app/(pages)/blog/mua-nao-dep-nhat-di-sapa
+cat > src/app/(pages)/blog/mua-nao-dep-nhat-di-sapa/page.tsx <<'EOF'
+export default function Post(){
+  return (
+    <article className="section py-10 prose max-w-3xl">
+      <h1>Mùa nào đẹp nhất để đi Sapa?</h1>
+      <p>Xuân săn mây, thu lúa chín vàng, đông săn băng giá – tuỳ sở thích mà chọn thời điểm lý tưởng.</p>
+      <p>Đặt phòng theo mùa cao điểm nên sớm 2–4 tuần để có giá tốt.</p>
+    </article>
+  );
+}
+EOF
+
+# =========================
+# PUBLIC IMAGES (PLACEHOLDERS)
+# =========================
+# Bạn có thể thay ảnh thật sau này. Tạm tạo ảnh rỗng để build không lỗi.
+for f in hero fansipan catcat muonghoa rongmay eden1 eden2 eden3 topas1 topas2 topas3 chapa1 chapa2 chapa3 hotel1 hotel2 hotel3
+do
+  convert -size 1200x800 xc:lightgray -gravity center -pointsize 48 -annotate 0 "$f.jpg" "public/images/$f.jpg" 2>/dev/null || \
+  (echo "PLACEHOLDER" > "public/images/$f.jpg")
+done
+
+# =========================
+# TAILWIND CONFIG ALREADY EXISTS – just ensure content path ok
+# =========================
+# (Created by create-next-app with --tailwind)
+
+# =========================
+# GITHUB ACTIONS: build & zip artifact
+# =========================
+mkdir -p .github/workflows
+cat > .github/workflows/build-zip.yml <<'EOF'
+name: Build & Zip
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - name: Create ZIP
+        run: |
+          zip -r sapatrip.zip . -x "node_modules/*" ".next/cache/*" ".git/*"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sapatrip-zip
+          path: sapatrip.zip
+EOF
+
+# =========================
+# NPM SCRIPTS & README
+# =========================
+# (create-next-app already provides scripts: dev, build, start, lint)
+
+cat > README.md <<'EOF'
+# SapaTrip
+Website đặt phòng & khám phá Sapa (Next.js + Tailwind).
+
+## Chạy dev
+```bash
+npm i
+npm run dev
